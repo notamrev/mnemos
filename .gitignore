@@ -7,10 +7,9 @@ Icon
 .Spotlight-V100
 .Trashes
 
-# Xcode
-*.xcodeproj/xcuserdata/
-*.xcworkspace/xcuserdata/
-*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+# Xcode — project is generated from project.yml via `xcodegen generate`
+*.xcodeproj/
+*.xcworkspace/
 build/
 DerivedData/
 *.ipa
