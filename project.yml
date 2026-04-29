@@ -1,0 +1,63 @@
+name: Mnemos
+options:
+  bundleIdPrefix: com.notamrev
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ENABLE_HARDENED_RUNTIME: YES
+
+targets:
+  Mnemos:
+    type: application
+    platform: macOS
+    sources:
+      - path: Mnemos
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.notamrev.mnemos
+        PRODUCT_NAME: Mnemos
+        INFOPLIST_FILE: Mnemos/Resources/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    entitlements:
+      path: Mnemos/Mnemos.entitlements
+
+  MnemosTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: MnemosTests
+    dependencies:
+      - target: Mnemos
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.notamrev.mnemos.tests
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+
+schemes:
+  Mnemos:
+    build:
+      targets:
+        Mnemos: all
+        MnemosTests: test
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - MnemosTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
