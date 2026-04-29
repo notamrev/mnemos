@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Enforces conventional commit format.
+# Pattern: <type>(<optional-scope>): <description>
+# Co-Authored-By trailers are allowed after the subject line.
+
+MSG_FILE="$1"
+MSG=$(head -1 "$MSG_FILE")
+
+PATTERN='^(feat|fix|test|chore|docs|refactor|style|perf|ci)(\(.+\))?: .{1,100}$'
+
+if ! echo "$MSG" | grep -qE "$PATTERN"; then
+  echo ""
+  echo "  ✗ Commit message doesn't follow conventional commits."
+  echo ""
+  echo "  Expected:  <type>(<scope>): <description>"
+  echo "  Got:       $MSG"
+  echo ""
+  echo "  Valid types: feat  fix  test  chore  docs  refactor  style  perf  ci"
+  echo "  Examples:"
+  echo "    feat(overlay): add fade animation on show"
+  echo "    fix(hotkey): re-enable tap after system suspension"
+  echo "    test(storage): add KnowledgeStore expiry tests"
+  echo ""
+  exit 1
+fi

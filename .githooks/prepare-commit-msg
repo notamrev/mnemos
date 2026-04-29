@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Pre-populates commit message with branch context so the developer
+# doesn't have to type the issue number manually.
+# Only runs for new commits (not merges, amends, or squashes).
+
+MSG_FILE="$1"
+COMMIT_SOURCE="$2"
+
+# Don't modify message for merges, squashes, or existing messages
+[[ -n "$COMMIT_SOURCE" ]] && exit 0
+
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+# Extract issue number from branch name: feat/12-knowledge-snippet → #12
+ISSUE=$(echo "$BRANCH" | grep -oE '[0-9]+' | head -1)
+TYPE=$(echo "$BRANCH" | cut -d'/' -f1)
+
+if [[ -n "$ISSUE" && -n "$TYPE" ]]; then
+  # Prepend type hint if message is empty
+  CURRENT=$(cat "$MSG_FILE" | grep -v '^#')
+  if [[ -z "$(echo "$CURRENT" | tr -d '[:space:]')" ]]; then
+    echo "${TYPE}: " > "$MSG_FILE"
+    echo "" >> "$MSG_FILE"
+    echo "Closes #${ISSUE}" >> "$MSG_FILE"
+    echo "" >> "$MSG_FILE"
+    echo "Co-Authored-By: Claude Sonnet 4.6 (1M context) <noreply@anthropic.com>" >> "$MSG_FILE"
+  fi
+fi

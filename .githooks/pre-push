@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Blocks direct pushes to main.
+# Also enforces branch naming: feat|fix|test|chore|docs|refactor/<details>
+
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+VALID_BRANCH='^(feat|fix|test|chore|docs|refactor)\/[a-z0-9]([a-z0-9\-]*)$'
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" == "refs/heads/main" && "$local_sha" != "$(git rev-parse HEAD~0 2>/dev/null)" ]] || \
+     [[ "$remote_ref" == "refs/heads/main" ]]; then
+    echo ""
+    echo "  ✗ Direct pushes to main are not allowed."
+    echo ""
+    echo "  Push to your feature branch and open a PR:"
+    echo "    git push -u origin $BRANCH"
+    echo "    gh pr create --repo notamrev/mnemos"
+    echo ""
+    exit 1
+  fi
+done
+
+# Validate branch name for non-main branches
+if [[ "$BRANCH" != "main" ]] && ! echo "$BRANCH" | grep -qE "$VALID_BRANCH"; then
+  echo ""
+  echo "  ✗ Branch name '$BRANCH' does not follow naming conventions."
+  echo ""
+  echo "  Required format:  <type>/<issue#>-<short-description>"
+  echo "  Examples:"
+  echo "    feat/12-knowledge-snippet-models"
+  echo "    fix/9-hotkey-tap-disabled-recovery"
+  echo "    test/7-storage-expiry-tests"
+  echo ""
+  exit 1
+fi

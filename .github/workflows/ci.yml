@@ -1,19 +1,29 @@
 name: CI
+# Disabled until MVP — all builds and tests run locally via Xcode.
+# To re-enable: restore the push/pull_request triggers and remove `if: false`.
+#
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+#     branches: [main]
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual trigger"
+        required: true
 
 jobs:
   build:
+    if: false # disabled until MVP
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Generate Xcode project
+        run: brew install xcodegen && xcodegen generate
       - name: Build
-        run: swift build
+        run: xcodebuild -project Mnemos.xcodeproj -scheme Mnemos -destination "platform=macOS" build
       - name: Test
-        run: swift test
+        run: xcodebuild test -project Mnemos.xcodeproj -scheme Mnemos -destination "platform=macOS"
