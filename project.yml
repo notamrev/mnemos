@@ -42,6 +42,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.notamrev.mnemos.tests
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
+        GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   Mnemos:
