@@ -1,52 +1,75 @@
 # /mnemos-pr
 
-Create a pull request for the current branch following Mnemos project rules.
+Create a pull request for the current branch. Enforces all branch and PR rules before opening.
 
-## Project rules
-- Every PR must link to an issue (task card, not an epic)
-- PR title = issue title (keep it short, under 70 chars)
-- Branch name should reflect the task: `feat/<short-description>` or `fix/<short-description>`
-- One PR per task — no bundling unrelated changes
+## Rules
+- Must be on a feature branch (never main)
+- Branch name must match: `(feat|fix|test|chore|docs|refactor)/<issue#>-<description>`
+- All tests must pass before PR is opened
+- PR title = task issue title
+- Every PR must close exactly one task issue
+
+## Project constants
+- Repo: `notamrev/mnemos`
+- Project ID: `PVT_kwHOBLrHWc4BWElA`
+- Status field: `PVTSSF_lAHOBLrHWc4BWElAzhRbvBU`
+  - In Review: `aba860b9`
 
 ## What to do
 
-The user wants to open a PR for: **$ARGUMENTS**
+Issue number (if given): **$ARGUMENTS**
 
-If no issue number is given, ask for it before proceeding.
+### Step 1 — Guard: check branch
+```
+git symbolic-ref --short HEAD
+```
+If the branch is `main` — stop. Tell the user to create a feature branch.
+If the branch name doesn't match the naming convention — stop and show the correct format.
 
-### Step 1 — Sanity checks
+### Step 2 — Guard: uncommitted changes
 ```
-git status          # ensure no uncommitted changes
-git diff main...HEAD --stat   # show what's changing
+git status --short
 ```
-If there are uncommitted changes, stop and tell the user.
+If there are uncommitted changes — stop and ask the user to commit or stash them.
 
-### Step 2 — Confirm branch
-If on `main`, stop and ask the user to create a feature branch first:
+### Step 3 — Run tests
 ```
-git checkout -b feat/<description>
+xcodebuild test -project Mnemos.xcodeproj -scheme Mnemos -destination "platform=macOS" 2>&1 | tail -20
+```
+If any tests fail — stop. Show the failing test names. Do not open a PR with failing tests.
+
+### Step 4 — Fetch issue title
+```
+gh issue view <issue#> --repo notamrev/mnemos --json title,body
 ```
 
-### Step 3 — Push if needed
+### Step 5 — Push branch
 ```
 git push -u origin HEAD
 ```
 
-### Step 4 — Draft PR body
-- **Summary**: 2–3 bullets on what changed and why
-- **Test plan**: checklist of how to verify this works manually + which automated tests cover it
-- **Linked issue**: `Closes #<N>`
-
-### Step 5 — Create PR
+### Step 6 — Create PR
 ```
 gh pr create \
+  --repo notamrev/mnemos \
   --title "<issue title>" \
-  --body "..." \
-  --repo notamrev/mnemos
+  --body "$(cat <<'EOF'
+## Summary
+- <bullet: what changed>
+- <bullet: why>
+
+## Test plan
+- [ ] Tests pass: `⌘U` in Xcode
+- [ ] Manual verification: <describe golden path>
+
+## Linked issue
+Closes #<issue#>
+EOF
+)"
 ```
 
-### Step 6 — Move board card to In Review
-Look up the project item for the linked issue and set Status = In Review (`aba860b9`):
+### Step 7 — Move board card to In Review
+Get item ID for the issue, then:
 ```
 gh project item-edit --project-id PVT_kwHOBLrHWc4BWElA --id <item-id> \
   --field-id PVTSSF_lAHOBLrHWc4BWElAzhRbvBU --single-select-option-id aba860b9
