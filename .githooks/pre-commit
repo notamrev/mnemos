@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Blocks commits directly to main.
+# All work must happen on a feature branch and land via PR.
+
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+if [[ "$BRANCH" == "main" ]]; then
+  echo ""
+  echo "  ✗ Direct commits to main are not allowed."
+  echo ""
+  echo "  Create a branch first:"
+  echo "    git checkout -b feat/<issue#>-<short-description>"
+  echo "    git checkout -b fix/<issue#>-<short-description>"
+  echo ""
+  exit 1
+fi
