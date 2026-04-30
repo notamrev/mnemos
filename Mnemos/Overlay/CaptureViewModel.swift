@@ -18,4 +18,16 @@ final class CaptureViewModel {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
     }
+
+    func save(into store: KnowledgeStore) throws {
+        guard canSave else { return }
+        let snippet = KnowledgeSnippet(
+            content: content.trimmingCharacters(in: .whitespacesAndNewlines),
+            tags: parsedTags
+        )
+        try store.save(snippet)
+        content = ""
+        tagInput = ""
+        showConfirmation = true
+    }
 }

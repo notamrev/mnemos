@@ -28,18 +28,38 @@ struct OverlayView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 8)
 
-                TextField("tags, comma separated", text: $vm.tagInput)
-                    .textFieldStyle(.plain)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 16)
+                HStack {
+                    TextField("tags, comma separated", text: $vm.tagInput)
+                        .textFieldStyle(.plain)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    if vm.showConfirmation {
+                        Text("Saved ✓")
+                            .font(.callout)
+                            .foregroundStyle(.green)
+                            .transition(.opacity)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
             }
         }
         .ignoresSafeArea()
         .onAppear { contentFocused = true }
         .onExitCommand {
             (NSApp.delegate as? AppDelegate)?.toggleOverlay()
+        }
+        .keyboardShortcut(.return, modifiers: .command)
+        .onKeyPress(.return, phases: .down) { event in
+            guard event.modifiers.contains(.command), vm.canSave else { return .ignored }
+            try? vm.save(into: .shared)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.8))
+                (NSApp.delegate as? AppDelegate)?.toggleOverlay()
+                vm.showConfirmation = false
+            }
+            return .handled
         }
     }
 }
