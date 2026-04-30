@@ -7,12 +7,18 @@ final class KnowledgeStore {
     static let shared = KnowledgeStore()
 
     let directory: URL
+    private let formatter: DateFormatter
 
     init(directory: URL = FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appending(path: "Mnemos")) {
         self.directory = directory
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        self.formatter = f
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        sweepTempFiles()
     }
 
     func save(_ snippet: KnowledgeSnippet) throws {
@@ -56,9 +62,15 @@ final class KnowledgeStore {
     }
 
     private func dateKey(for date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f.string(from: date)
+        formatter.string(from: date)
+    }
+
+    private func sweepTempFiles() {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil
+        ) else { return }
+        for url in entries where url.pathExtension == "tmp" {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }

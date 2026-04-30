@@ -42,6 +42,7 @@ struct KnowledgeStoreTests {
         try store.save(snippetToday)
         let all = store.fetchAll()
         #expect(all.count == 2)
+        #expect(all[0].date < all[1].date)
     }
 
     @Test func atomicWriteLeavesNoTempFiles() throws {
