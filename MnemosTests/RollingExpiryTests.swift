@@ -34,10 +34,8 @@ struct RollingExpiryTests {
         // expired snippet: expiresAt in the past
         let longAgo = Date.now.addingTimeInterval(-10 * 86400)
         let expired = KnowledgeSnippet(content: "expired", tags: [], capturedAt: longAgo)
-        // valid snippet for today
         let valid = KnowledgeSnippet(content: "valid", tags: [])
-        // Write both into today's log manually so the file itself is < 7 days old
-        let today = store.dateKeyPublic(for: .now)
+        let today = store.dateKey(for: .now)
         let url = store.directory.appending(path: "\(today).json")
         let log = DailyLog(date: today, items: [expired, valid])
         let data = try JSONEncoder().encode(log)

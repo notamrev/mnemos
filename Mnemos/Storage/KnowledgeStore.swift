@@ -48,7 +48,7 @@ final class KnowledgeStore {
     }
 
     func purgeExpired(relativeTo now: Date = .now) {
-        let cutoff = now.addingTimeInterval(-7 * 24 * 60 * 60)
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
         let cutoffKey = dateKey(for: cutoff)
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil
@@ -57,19 +57,14 @@ final class KnowledgeStore {
             let stem = url.deletingPathExtension().lastPathComponent
             if stem < cutoffKey {
                 try? FileManager.default.removeItem(at: url)
-            } else if var log = loadLog(at: url) {
-                let before = log.items.count
-                log = DailyLog(date: log.date, items: log.items.filter { $0.expiresAt > now })
-                if log.items.count != before {
-                    try? atomicWrite(log, to: url)
+            } else if let log = loadLog(at: url) {
+                let kept = log.items.filter { $0.expiresAt > now }
+                if kept.count != log.items.count {
+                    try? atomicWrite(DailyLog(date: log.date, items: kept), to: url)
                 }
             }
         }
     }
-
-    // MARK: - Internal (testable)
-
-    func dateKeyPublic(for date: Date) -> String { dateKey(for: date) }
 
     // MARK: - Private
 
@@ -85,7 +80,7 @@ final class KnowledgeStore {
         _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
     }
 
-    private func dateKey(for date: Date) -> String {
+    func dateKey(for date: Date) -> String {
         formatter.string(from: date)
     }
 

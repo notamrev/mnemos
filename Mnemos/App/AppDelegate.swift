@@ -6,8 +6,10 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlayWindowController: OverlayWindowController?
     private let hotKeyManager = HotKeyManager()
+    var knowledgeStore: KnowledgeStore = .shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        knowledgeStore.purgeExpired()
         overlayWindowController = OverlayWindowController()
         hotKeyManager.onHotKey = { [weak self] in
             Task { @MainActor in self?.toggleOverlay() }
