@@ -2,6 +2,7 @@ import Testing
 import Foundation
 @testable import Mnemos
 
+@MainActor
 struct KnowledgeStoreTests {
 
     private func makeStore() -> KnowledgeStore {
@@ -27,7 +28,7 @@ struct KnowledgeStoreTests {
         #expect(log.items.count == 2)
     }
 
-    @Test func fetchTodayReturnsNilWhenNoFile() throws {
+    @Test func fetchTodayReturnsNilWhenNoFile() {
         let store = makeStore()
         #expect(store.fetchToday() == nil)
     }
@@ -46,8 +47,7 @@ struct KnowledgeStoreTests {
     @Test func atomicWriteLeavesNoTempFiles() throws {
         let store = makeStore()
         try store.save(KnowledgeSnippet(content: "atomic", tags: []))
-        let dir = store.directory
-        let contents = try FileManager.default.contentsOfDirectory(atPath: dir.path())
+        let contents = try FileManager.default.contentsOfDirectory(atPath: store.directory.path())
         #expect(contents.allSatisfy { $0.hasSuffix(".json") })
     }
 
