@@ -24,7 +24,7 @@ final class KnowledgeStore {
     func save(_ snippet: KnowledgeSnippet) throws {
         let key = dateKey(for: snippet.capturedAt)
         let url = directory.appending(path: "\(key).json")
-        var log: DailyLog
+        let log: DailyLog
         if let existing = loadLog(at: url) {
             log = DailyLog(date: key, items: existing.items + [snippet])
         } else {
@@ -46,6 +46,30 @@ final class KnowledgeStore {
             .compactMap { loadLog(at: $0) }
             .sorted { $0.date < $1.date }
     }
+
+    func purgeExpired(relativeTo now: Date = .now) {
+        let cutoff = now.addingTimeInterval(-7 * 24 * 60 * 60)
+        let cutoffKey = dateKey(for: cutoff)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil
+        ) else { return }
+        for url in entries where url.pathExtension == "json" {
+            let stem = url.deletingPathExtension().lastPathComponent
+            if stem < cutoffKey {
+                try? FileManager.default.removeItem(at: url)
+            } else if var log = loadLog(at: url) {
+                let before = log.items.count
+                log = DailyLog(date: log.date, items: log.items.filter { $0.expiresAt > now })
+                if log.items.count != before {
+                    try? atomicWrite(log, to: url)
+                }
+            }
+        }
+    }
+
+    // MARK: - Internal (testable)
+
+    func dateKeyPublic(for date: Date) -> String { dateKey(for: date) }
 
     // MARK: - Private
 
