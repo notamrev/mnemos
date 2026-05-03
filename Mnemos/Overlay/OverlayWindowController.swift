@@ -1,7 +1,10 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 final class OverlayWindowController: NSWindowController {
+    let overlayViewModel = OverlayViewModel()
+
     convenience init() {
         let panel = NSPanel(
             contentRect: .zero,
@@ -17,7 +20,9 @@ final class OverlayWindowController: NSWindowController {
         panel.backgroundColor = .clear
         panel.hasShadow = true
 
-        let contentView = NSHostingView(rootView: OverlayView())
+        self.init(window: panel)
+
+        let contentView = NSHostingView(rootView: OverlayView(overlay: overlayViewModel))
         contentView.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView = contentView
 
@@ -26,8 +31,6 @@ final class OverlayWindowController: NSWindowController {
             contentView.heightAnchor.constraint(equalToConstant: 320),
         ])
         panel.setContentSize(CGSize(width: 560, height: 320))
-
-        self.init(window: panel)
     }
 
     func toggle() {
@@ -35,6 +38,7 @@ final class OverlayWindowController: NSWindowController {
         if window.isVisible {
             close()
         } else {
+            overlayViewModel.reset()
             centerOnActiveScreen()
             showWindow(nil)
             window.makeFirstResponder(window.contentView)
