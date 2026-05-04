@@ -18,21 +18,3 @@ struct BrowseView: View {
     }
 }
 
-private struct SnippetRow: View {
-    let snippet: KnowledgeSnippet
-    let relativeTime: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(snippet.content)
-                .font(.body)
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(relativeTime)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
-    }
-}
