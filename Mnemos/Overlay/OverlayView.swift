@@ -2,7 +2,8 @@ import SwiftUI
 
 struct OverlayView: View {
     @Bindable var overlay: OverlayViewModel
-    @State private var vm = CaptureViewModel()
+    @State private var captureVM = CaptureViewModel()
+    @State private var browseVM = BrowseViewModel()
     @FocusState private var contentFocused: Bool
 
     var body: some View {
@@ -26,7 +27,7 @@ struct OverlayView: View {
                 case .capture:
                     captureBody
                 case .browse:
-                    browseBody
+                    BrowseView(vm: browseVM)
                 }
             }
         }
@@ -34,6 +35,7 @@ struct OverlayView: View {
         .onAppear { contentFocused = (overlay.mode == .capture) }
         .onChange(of: overlay.mode) { _, newMode in
             contentFocused = (newMode == .capture)
+            if newMode == .browse { browseVM.load(from: .shared) }
         }
         .onExitCommand {
             (NSApp.delegate as? AppDelegate)?.toggleOverlay()
@@ -46,12 +48,12 @@ struct OverlayView: View {
         .onKeyPress(.return, phases: .down) { event in
             guard overlay.mode == .capture,
                   event.modifiers.contains(.command),
-                  vm.canSave else { return .ignored }
-            try? vm.save(into: .shared)
+                  captureVM.canSave else { return .ignored }
+            try? captureVM.save(into: .shared)
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(0.8))
                 (NSApp.delegate as? AppDelegate)?.toggleOverlay()
-                vm.showConfirmation = false
+                captureVM.showConfirmation = false
             }
             return .handled
         }
@@ -59,7 +61,7 @@ struct OverlayView: View {
 
     private var captureBody: some View {
         VStack(spacing: 0) {
-            TextEditor(text: $vm.content)
+            TextEditor(text: $captureVM.content)
                 .focused($contentFocused)
                 .font(.body)
                 .scrollContentBackground(.hidden)
@@ -71,12 +73,12 @@ struct OverlayView: View {
                 .padding(.vertical, 8)
 
             HStack {
-                TextField("tags, comma separated", text: $vm.tagInput)
+                TextField("tags, comma separated", text: $captureVM.tagInput)
                     .textFieldStyle(.plain)
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                if vm.showConfirmation {
+                if captureVM.showConfirmation {
                     Text("Saved ✓")
                         .font(.callout)
                         .foregroundStyle(.green)
@@ -88,17 +90,7 @@ struct OverlayView: View {
         }
     }
 
-    private var browseBody: some View {
-        VStack {
-            Spacer()
-            Text("Browse coming soon")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 16)
-    }
+
 }
 
 #Preview {
