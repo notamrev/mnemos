@@ -65,6 +65,7 @@ final class BrowseViewModel {
         guard let date = f.date(from: key) else { return key }
         let out = DateFormatter()
         out.dateFormat = "MMM d"
+        out.locale = Locale(identifier: "en_US_POSIX")
         return out.string(from: date)
     }
 }

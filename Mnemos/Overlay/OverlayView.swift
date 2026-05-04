@@ -90,17 +90,7 @@ struct OverlayView: View {
         }
     }
 
-    private var browseBody: some View {
-        VStack {
-            Spacer()
-            Text("Browse coming soon")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 16)
-    }
+
 }
 
 #Preview {
