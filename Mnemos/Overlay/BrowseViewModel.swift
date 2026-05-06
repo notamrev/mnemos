@@ -15,6 +15,14 @@ final class BrowseViewModel {
         sections = Self.groupSections(logs: store.fetchAll(), now: .now)
     }
 
+    nonisolated static func filtered(sections: [BrowseSection], tag: String?) -> [BrowseSection] {
+        guard let tag else { return sections }
+        return sections.compactMap { section in
+            let matching = section.snippets.filter { $0.tags.contains(tag) }
+            return matching.isEmpty ? nil : BrowseSection(header: section.header, snippets: matching)
+        }
+    }
+
     nonisolated static func groupSections(logs: [DailyLog], now: Date) -> [BrowseSection] {
         let calendar = Calendar.current
         let todayKey = dayKey(for: now)

@@ -2,14 +2,18 @@ import SwiftUI
 
 struct TagPill: View {
     let label: String
+    var isSelected: Bool = false
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
         Text(label)
             .font(.caption2)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color.accentColor.opacity(0.15), in: Capsule())
+            .background(Color.accentColor.opacity(isSelected ? 0.35 : 0.15), in: Capsule())
             .foregroundStyle(Color.accentColor)
+            .overlay(isSelected ? Capsule().strokeBorder(Color.accentColor, lineWidth: 1) : nil)
+            .onTapGesture { onTap?() }
     }
 }
 
