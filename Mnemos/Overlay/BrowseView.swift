@@ -3,13 +3,21 @@ import SwiftUI
 struct BrowseView: View {
     let vm: BrowseViewModel
     @State private var selectedTag: String?
+    @State private var searchText: String = ""
 
     private var displayedSections: [BrowseSection] {
-        BrowseViewModel.filtered(sections: vm.sections, tag: selectedTag)
+        let tagFiltered = BrowseViewModel.filtered(sections: vm.sections, tag: selectedTag)
+        return BrowseViewModel.searched(sections: tagFiltered, query: searchText)
     }
 
     var body: some View {
         VStack(spacing: 0) {
+            TextField("Search snippets…", text: $searchText)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.quaternary.opacity(0.5))
+
             if let tag = selectedTag {
                 HStack {
                     Text(tag)
@@ -28,7 +36,7 @@ struct BrowseView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
             }
 
             List {

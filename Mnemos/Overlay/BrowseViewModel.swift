@@ -15,6 +15,14 @@ final class BrowseViewModel {
         sections = Self.groupSections(logs: store.fetchAll(), now: .now)
     }
 
+    nonisolated static func searched(sections: [BrowseSection], query: String) -> [BrowseSection] {
+        guard !query.isEmpty else { return sections }
+        return sections.compactMap { section in
+            let matching = section.snippets.filter { $0.content.localizedCaseInsensitiveContains(query) }
+            return matching.isEmpty ? nil : BrowseSection(header: section.header, snippets: matching)
+        }
+    }
+
     nonisolated static func filtered(sections: [BrowseSection], tag: String?) -> [BrowseSection] {
         guard let tag else { return sections }
         return sections.compactMap { section in
