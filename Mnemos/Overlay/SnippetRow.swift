@@ -3,6 +3,7 @@ import SwiftUI
 struct SnippetRow: View {
     let snippet: KnowledgeSnippet
     let relativeTime: String
+    var onTagTap: ((String) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -14,7 +15,7 @@ struct SnippetRow: View {
             if !snippet.tags.isEmpty {
                 FlowLayout(spacing: 4) {
                     ForEach(snippet.tags, id: \.self) { tag in
-                        TagPill(label: tag)
+                        TagPill(label: tag, onTap: { onTagTap?(tag) })
                     }
                 }
             }
