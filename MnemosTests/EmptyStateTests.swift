@@ -2,14 +2,10 @@ import Testing
 import SwiftUI
 @testable import Mnemos
 
-// BrowseView empty state is pure view branching — no extractable logic.
-// These tests verify the API contract used to drive that branching.
-
 struct EmptyStateTests {
 
     @Test @MainActor func noSectionsIndicatesEmptyBrain() {
         let vm = BrowseViewModel()
-        // vm.sections is empty by default — represents "no snippets in 7-day window"
         #expect(vm.sections.isEmpty)
     }
 
@@ -33,5 +29,17 @@ struct EmptyStateTests {
             query: "mainactor"
         )
         #expect(!result.isEmpty)
+    }
+
+    @Test func nonEmptySectionsWithNoMatchYieldsEmptyDisplayed() {
+        let snippet = KnowledgeSnippet(content: "Use @MainActor", tags: ["swift"])
+        let sections = [BrowseSection(header: "Today", snippets: [snippet])]
+
+        let displayed = BrowseViewModel.searched(
+            sections: BrowseViewModel.filtered(sections: sections, tag: "design"),
+            query: ""
+        )
+        #expect(!sections.isEmpty)
+        #expect(displayed.isEmpty)
     }
 }

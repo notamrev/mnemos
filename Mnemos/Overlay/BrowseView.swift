@@ -47,7 +47,7 @@ struct BrowseView: View {
                 )
             } else if displayedSections.isEmpty {
                 ContentUnavailableView(
-                    "No snippets match your filter",
+                    "No snippets match your filter.",
                     systemImage: "magnifyingglass",
                     description: Text("Try a different search or clear the tag filter.")
                 )
