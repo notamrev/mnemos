@@ -39,23 +39,37 @@ struct BrowseView: View {
                 .padding(.vertical, 6)
             }
 
-            List {
-                ForEach(displayedSections, id: \.header) { section in
-                    Section(section.header) {
-                        ForEach(section.snippets) { snippet in
-                            SnippetRow(
-                                snippet: snippet,
-                                relativeTime: BrowseViewModel.relativeTime(for: snippet, now: .now),
-                                onTagTap: { tapped in
-                                    selectedTag = selectedTag == tapped ? nil : tapped
-                                }
-                            )
+            if vm.sections.isEmpty {
+                ContentUnavailableView(
+                    "No snippets yet",
+                    systemImage: "brain",
+                    description: Text("Press ⌘B to switch back and capture one.")
+                )
+            } else if displayedSections.isEmpty {
+                ContentUnavailableView(
+                    "No snippets match your filter.",
+                    systemImage: "magnifyingglass",
+                    description: Text("Try a different search or clear the tag filter.")
+                )
+            } else {
+                List {
+                    ForEach(displayedSections, id: \.header) { section in
+                        Section(section.header) {
+                            ForEach(section.snippets) { snippet in
+                                SnippetRow(
+                                    snippet: snippet,
+                                    relativeTime: BrowseViewModel.relativeTime(for: snippet, now: .now),
+                                    onTagTap: { tapped in
+                                        selectedTag = selectedTag == tapped ? nil : tapped
+                                    }
+                                )
+                            }
                         }
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
     }
 }
