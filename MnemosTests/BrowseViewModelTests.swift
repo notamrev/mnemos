@@ -57,6 +57,61 @@ struct BrowseViewModelTests {
         #expect(result.isEmpty)
     }
 
+    @Test func groupSectionsSortsThreeDaysNewestFirst() {
+        let day1 = DailyLog(date: "2026-05-01", items: [snippet("oldest")])
+        let day2 = DailyLog(date: "2026-05-02", items: [snippet("middle")])
+        let day3 = DailyLog(date: "2026-05-03", items: [snippet("newest")])
+        let result = BrowseViewModel.groupSections(logs: [day1, day2, day3], now: .now)
+        #expect(result.count == 3)
+        #expect(result[0].snippets.first?.content == "newest")
+        #expect(result[1].snippets.first?.content == "middle")
+        #expect(result[2].snippets.first?.content == "oldest")
+    }
+
+    @Test func groupSectionsTwoDaysAgoIsFormattedNotYesterday() {
+        let now = date(fromString: "2026-05-04")
+        let log = DailyLog(date: "2026-05-02", items: [snippet("x")])
+        let result = BrowseViewModel.groupSections(logs: [log], now: now)
+        #expect(result[0].header == "May 2")
+        #expect(result[0].header != "Yesterday")
+    }
+
+    // MARK: - DST-safe day boundary
+
+    @Test func groupSectionsTodayHeaderOnDSTSpringForwardDay() {
+        // 2026-03-08: US DST spring-forward — day is 23 hours long in affected timezones.
+        let now = date(fromString: "2026-03-08")
+        let log = DailyLog(date: "2026-03-08", items: [snippet("x")])
+        let result = BrowseViewModel.groupSections(logs: [log], now: now)
+        #expect(result[0].header == "Today")
+    }
+
+    @Test func groupSectionsYesterdayHeaderOnDSTSpringForwardDay() {
+        // 2026-03-08: US DST spring-forward — calendar.date(byAdding: .day, value: -1)
+        // must still yield 2026-03-07 even though the day is only 23 hours long.
+        let now = date(fromString: "2026-03-08")
+        let log = DailyLog(date: "2026-03-07", items: [snippet("x")])
+        let result = BrowseViewModel.groupSections(logs: [log], now: now)
+        #expect(result[0].header == "Yesterday")
+    }
+
+    @Test func groupSectionsTodayHeaderOnDSTFallBackDay() {
+        // 2025-11-02: US DST fall-back — day is 25 hours long in affected timezones.
+        let now = date(fromString: "2025-11-02")
+        let log = DailyLog(date: "2025-11-02", items: [snippet("x")])
+        let result = BrowseViewModel.groupSections(logs: [log], now: now)
+        #expect(result[0].header == "Today")
+    }
+
+    @Test func groupSectionsYesterdayHeaderOnDSTFallBackDay() {
+        // 2025-11-02: US DST fall-back — calendar.date(byAdding: .day, value: -1)
+        // must still yield 2025-11-01 even though the day is 25 hours long.
+        let now = date(fromString: "2025-11-02")
+        let log = DailyLog(date: "2025-11-01", items: [snippet("x")])
+        let result = BrowseViewModel.groupSections(logs: [log], now: now)
+        #expect(result[0].header == "Yesterday")
+    }
+
     // MARK: - relativeTime
 
     @Test func relativeTimeUnderMinuteIsJustNow() {
