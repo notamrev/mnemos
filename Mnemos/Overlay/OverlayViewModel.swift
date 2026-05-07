@@ -10,6 +10,7 @@ enum OverlayMode {
 @Observable
 final class OverlayViewModel {
     var mode: OverlayMode = .capture
+    private(set) var showToken: Int = 0
 
     func toggleMode() {
         mode = (mode == .capture) ? .browse : .capture
@@ -17,5 +18,6 @@ final class OverlayViewModel {
 
     func reset() {
         mode = .capture
+        showToken += 1
     }
 }
