@@ -34,4 +34,19 @@ struct OverlayViewModelTests {
         vm.reset()
         #expect(vm.mode == .capture)
     }
+
+    @Test func resetIncrementsShowToken() {
+        let vm = OverlayViewModel()
+        let before = vm.showToken
+        vm.reset()
+        #expect(vm.showToken == before + 1)
+    }
+
+    @Test func resetIncrementsShowTokenCumulatively() {
+        let vm = OverlayViewModel()
+        vm.reset()
+        vm.reset()
+        vm.reset()
+        #expect(vm.showToken == 3)
+    }
 }

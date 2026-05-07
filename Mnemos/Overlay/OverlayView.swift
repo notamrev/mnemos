@@ -33,6 +33,7 @@ struct OverlayView: View {
         }
         .ignoresSafeArea()
         .onAppear { contentFocused = (overlay.mode == .capture) }
+        .onChange(of: overlay.showToken) { _, _ in contentFocused = true }
         .onChange(of: overlay.mode) { _, newMode in
             contentFocused = (newMode == .capture)
             if newMode == .browse { browseVM.load(from: .shared) }
