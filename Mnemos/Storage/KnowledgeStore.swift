@@ -7,6 +7,7 @@ final class KnowledgeStore {
     static let shared = KnowledgeStore()
 
     let directory: URL
+    var onSave: (() -> Void)?
     private let formatter: DateFormatter
 
     init(directory: URL = FileManager.default
@@ -31,6 +32,7 @@ final class KnowledgeStore {
             log = DailyLog(date: key, items: [snippet])
         }
         try atomicWrite(log, to: url)
+        onSave?()
     }
 
     func fetchToday() -> DailyLog? {

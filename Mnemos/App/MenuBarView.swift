@@ -7,6 +7,11 @@ struct MenuBarView: View {
         }
         .keyboardShortcut("o")
 
+        Button("Export Skills") {
+            try? SkillsCompiler.shared.compile()
+        }
+        .keyboardShortcut("e")
+
         Divider()
 
         Button("Quit") {
