@@ -1,0 +1,46 @@
+{
+  "name": "mnemos",
+  "displayName": "Mnemos",
+  "description": "Automatically capture development activity into your Mnemos brain",
+  "version": "0.1.0",
+  "publisher": "notamrev",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Mnemos",
+      "properties": {
+        "mnemos.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Mnemos auto-capture"
+        },
+        "mnemos.captureTerminal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Capture significant terminal commands (opt-in)"
+        },
+        "mnemos.serverPort": {
+          "type": "number",
+          "default": 40842,
+          "description": "Port the Mnemos app is listening on"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "mocha --require ts-node/register src/test/**/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "mocha": "^10.0.0",
+    "ts-node": "^10.0.0",
+    "typescript": "^5.3.0"
+  }
+}
