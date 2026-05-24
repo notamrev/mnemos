@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         knowledgeStore.purgeExpired()
         knowledgeStore.onSave = { SkillsCompiler.shared.scheduleCompile() }
+        CaptureServer.shared.start()
         overlayWindowController = OverlayWindowController()
         hotKeyManager.onHotKey = { [weak self] in
             Task { @MainActor in self?.toggleOverlay() }
@@ -20,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         hotKeyManager.unregister()
+        CaptureServer.shared.stop()
     }
 
     // MARK: - Accessibility
