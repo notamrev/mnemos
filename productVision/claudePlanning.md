@@ -11,10 +11,11 @@ This plan defines the phases, technology decisions, and epics required to reach 
 ## Guiding Principles
 
 - **Local-first, zero friction** — individual brain requires no server, no Docker, no account
-- **Cloud-agnostic team layer** — on-premise or client cloud; Docker Compose as the deployment primitive
+- **Cloud-agnostic team layer** — on-premise or client cloud; Podman Compose as the deployment primitive (Podman preferred over Docker — rootless, daemon-free)
 - **Privacy by default** — all automatic capture is opt-in; snippets are private unless explicitly shared
 - **Monolithic-first** — no microservices split until a boundary forces it
 - **macOS native stays** — overlay remains Swift/SwiftUI; new components (MCP server, VS Code extension, sync server) are separate binaries/packages
+- **No throwaway code** — each stage must extend the previous one, never replace it; temporary compatibility shims are banned
 - **Beta-first SDLC** — ship the smallest working thing to real users before building infrastructure; validate before scaling
 
 ---
@@ -26,28 +27,30 @@ This plan defines the phases, technology decisions, and epics required to reach 
 | Capture UI | ✅ Shipped | Manual text + tags |
 | Browse UI | ✅ Shipped | Day-grouped list, tag filter, search |
 | Storage | ✅ Shipped | Flat JSON, 7-day rolling |
-| Skills Compiler | 🔄 In Progress (Epic #5) | group snippets by tag → skills.json |
-| AI integration | ❌ None | — |
-| Auto-capture | ❌ None | — |
-| Team sync | ❌ None | — |
+| Skills Compiler | ✅ Shipped | group snippets by tag → skills.json, 5s auto-compile |
+| VS Code Auto-capture | ✅ Shipped | file open/save → POST localhost:40842; terminal opt-in |
+| SQLite storage | 🔄 In Progress (Epic #64) | embedded, FTS5, replaces JSON |
+| MCP server | 🔄 In Progress (Epic #65) | stdio server for Claude Code queries |
+| Team sync | ❌ Not started (Epic #66) | PostgreSQL + Podman, after Stage 3 |
 
 ---
 
-## Revised Roadmap — Beta-First Staging
+## Revised Roadmap — Beta-First, No Throwaway Code
 
-The original roadmap optimised for technical correctness (SQLite before AI, infrastructure before users). The revised staging optimises for **getting real developers using a real brain as fast as possible**, then hardening the infrastructure once value is proven.
+Each stage extends the previous one. Nothing gets removed or replaced.
 
 ```
-ORIGINAL ORDER          REVISED ORDER
-─────────────────       ──────────────────────────────────────
-Phase 1: MVP       →    Stage 1: Complete MVP + Skills Compiler  ← NOW
-Phase 2: SQLite    →    Stage 4: SQLite + MCP (deferred)
-Phase 3: MCP       →    Stage 4: (same, deferred)
-Phase 4: Auto-cap  →    Stage 2: VS Code Auto-capture (moved up)
-Phase 5: Team      →    Stage 3: Shared Brain via Git (simplified)
-                        Stage 4: SQLite + Full MCP (after beta proven)
-                        Stage 5: Team PostgreSQL (scale-up)
+Stage 1: MVP + Skills Compiler          ✅ Done
+Stage 2: VS Code Auto-capture           ✅ Done
+Stage 3: SQLite + MCP server            ← NOW
+Stage 4: Team Brain (PostgreSQL/Podman) next
 ```
+
+**Why this order:**
+- Stage 3 (SQLite) is the permanent storage layer — it extends the existing KnowledgeStore API, nothing is ripped out
+- Stage 3 (MCP) reads from SQLite and exposes the brain to Claude Code — the permanent sharing mechanism
+- Stage 4 adds a PostgreSQL sync on top of the same MCP interface — no code deleted, just extended
+- Git-based sharing was considered and **rejected** to avoid a throwaway code path
 
 **Why this order:** Auto-capture and a shared brain are the features that make the product *feel* like magic to a beta team. SQLite and a full MCP server are infrastructure investments that pay off at scale — they come after beta validates the value, not before.
 
@@ -156,59 +159,8 @@ POST /capture
 
 ---
 
-## Stage 3 — Shared Brain via Git
-**Goal:** Each developer's `skills.json` gets committed to a shared internal repo. A CI job merges them into `team-brain.json`. Any team member or Claude Code instance loads it as context — no server, no Docker, no account required.
-
-**Why before PostgreSQL:** For a 5–10 person beta team, a compiled JSON file in a shared repo is enough to prove value. Ships in days, not weeks.
-
-### Merge-Skills Script
-Reads all `skills/<developer>.json` files → deduplicates identical content (case-insensitive) → emits `team-brain.json` attributed by author.
-
-**Input** (`skills/alice.json`):
-```json
-{
-  "swift": ["Use @MainActor for UI updates"],
-  "auth": ["Tokens expire after 5 minutes"]
-}
-```
-
-**Output** (`team-brain.json`):
-```json
-{
-  "swift": [
-    { "author": "alice", "content": "Use @MainActor for UI updates" },
-    { "author": "bob",   "content": "Prefer structured concurrency over GCD" }
-  ],
-  "auth": [
-    { "author": "alice", "content": "Tokens expire after 5 minutes" }
-  ]
-}
-```
-
-**New files:**
-- `scripts/merge-skills.js` — merge script (Node.js)
-- `.github/workflows/compile-team-brain.yml` — triggers on push to skills/
-
-### CI Job
-Triggers when any `skills/*.json` changes on push to main → runs merge script → auto-commits updated `team-brain.json`. Idempotent, completes in under 30s.
-
-### Developer Onboarding
-- Install Mnemos + VS Code extension
-- Clone shared brain repo
-- After each session: push updated `skills.json` to `skills/<your-name>.json`
-- Load `team-brain.json` in Claude Code via `@file`
-
-**Issues:**
-- #57 feat: merge-skills script (Backlog)
-- #58 ci: auto-compile team-brain.json on push (Backlog)
-- #59 docs: team onboarding guide (Backlog)
-
-**Output:** Dev A pushes skills.json → CI merges → Dev B pulls → Claude Code answers questions about the team's collective knowledge.
-
----
-
-## Stage 4 — Storage Foundation + Full MCP
-**Goal:** Migrate from flat JSON to SQLite. Build the mnemos-mcp stdio server. Enable real-time queries. Unlocks after beta validates value from Stages 1–3.
+## Stage 3 — SQLite + MCP Server
+**Goal:** Replace flat JSON with embedded SQLite (permanent storage). Build the mnemos-mcp stdio server so Claude Code can query the brain in real-time. No throwaway code — this is the permanent local stack that Stage 4 builds on top of.
 
 ### Why SQLite
 - FTS5 enables full-text search across all snippets
@@ -258,15 +210,17 @@ list_tags(prefix?)              → string[]    -- all tags in local brain
 - `mnemos-mcp/` — new Swift Package (CLI target)
 - `MnemosTests/KnowledgeDatabaseTests.swift`
 
-**Issues (to create after Stage 3 complete):**
-- Epic #7: Storage: SQLite migration + FTS
-- Epic #8: AI: mnemos-mcp stdio server
-- Epic #9: AI: Claude API key + Ask tab
+**Issues:**
+- #67 feat: KnowledgeDatabase — SQLite wrapper with FTS5 (Ready)
+- #68 feat: KnowledgeStore — swap JSON I/O for SQLite (Backlog)
+- #69 feat: JSON→SQLite migration on first launch (Backlog)
+- #70 test: SQLite round-trip, FTS, migration, purge (Backlog)
+- #65 Epic: MCP Server (mnemos-mcp) (Backlog)
 
 ---
 
-## Stage 5 — Team Brain (Scale-Up)
-**Goal:** Replace the git-based shared brain with a real-time PostgreSQL sync. Enables live queries, semantic search across the team, and the mnemos-sql query language. Unlocks after Stage 4 proven.
+## Stage 4 — Team Brain
+**Goal:** PostgreSQL + pgvector team sync. Multiple developers share a live queryable brain. Uses Podman as the container runtime (`podman compose up -d`). Extends the Stage 3 MCP interface — no code removed, just new tools added.
 
 ### Team PostgreSQL Schema
 ```sql
@@ -304,10 +258,12 @@ FROM @team  TAGGED "swift" SINCE 7d
 FROM @me    RECENT 20
 ```
 
-**Issues (to create after Stage 4 complete):**
-- Epic #12: Team sync server + Docker Compose
-- Epic #13: mnemos-sql query layer
-- Epic #14: Auto-capture terminal, JetBrains, clipboard, screen
+**Container runtime:** Podman (rootless, daemon-free). `docker-compose.yml` is Podman Compose-compatible.
+Local test: `podman machine start && podman compose up -d`
+
+**Issues (to create after Stage 3 complete):**
+- Epic #66: Team Brain — PostgreSQL + Podman
+- Sub-epics: Go sync server, mnemos-sql query layer, terminal/JetBrains/clipboard auto-capture
 
 ---
 
@@ -319,16 +275,12 @@ FROM @me    RECENT 20
 | #2 | Knowledge Capture | 1 | ✅ Done |
 | #3 | Ephemeral Storage | 1 | ✅ Done |
 | #4 | Browse & Review | 1 | ✅ Done |
-| #5 | Skills Compiler | 1 | 🔄 In Progress |
-| #6 | App Polish & Distribution | 1 | 🔄 In Progress |
-| #51 | VS Code Auto-capture | 2 | 📋 Planned |
-| #52 | Shared Brain via Git | 3 | 📋 Planned |
-| #7 | Storage: SQLite + FTS | 4 | 🔒 Locked (after Stage 3) |
-| #8 | AI: mnemos-mcp stdio server | 4 | 🔒 Locked |
-| #9 | AI: Claude API key + Ask tab | 4 | 🔒 Locked |
-| #12 | Team sync + Docker Compose | 5 | 🔒 Locked (after Stage 4) |
-| #13 | Team: mnemos-sql | 5 | 🔒 Locked |
-| #14 | Auto-capture: terminal/JB/clipboard/screen | 5 | 🔒 Locked |
+| #5 | Skills Compiler | 1 | ✅ Done |
+| #6 | App Polish & Distribution | 1 | ✅ Done |
+| #51 | VS Code Auto-capture | 2 | ✅ Done |
+| #64 | SQLite Migration + FTS | 3 | 🔄 In Progress |
+| #65 | MCP Server (mnemos-mcp) | 3 | 📋 Planned |
+| #66 | Team Brain (PostgreSQL + Podman) | 4 | 🔒 Locked (after Stage 3) |
 
 ---
 
@@ -336,15 +288,13 @@ FROM @me    RECENT 20
 
 | File | Change | Stage |
 |---|---|---|
-| `Mnemos/SkillsCompiler/SkillsCompiler.swift` | New: group by tag, emit skills.json | 1 |
-| `Mnemos/Capture/CaptureServer.swift` | New: localhost HTTP receiver | 2 |
-| `extensions/vscode/src/extension.ts` | New: VS Code extension | 2 |
-| `scripts/merge-skills.js` | New: merge per-dev skills.json | 3 |
-| `.github/workflows/compile-team-brain.yml` | New: CI auto-compile | 3 |
-| `Mnemos/Storage/KnowledgeStore.swift` | Swap JSON I/O for SQLite | 4 |
-| `Mnemos/Models/KnowledgeSnippet.swift` | Add `source: SnippetSource` | 4 |
-| `mnemos-mcp/Sources/main.swift` | New: MCP stdio server | 4 |
-| `docker-compose.yml` | New: team server | 5 |
+| `Mnemos/SkillsCompiler/SkillsCompiler.swift` | New: group by tag, emit skills.json | 1 ✅ |
+| `Mnemos/Capture/CaptureServer.swift` | New: localhost HTTP receiver | 2 ✅ |
+| `extensions/vscode/src/extension.ts` | New: VS Code extension | 2 ✅ |
+| `Mnemos/Storage/KnowledgeDatabase.swift` | New: SQLite wrapper + FTS5 | 3 |
+| `Mnemos/Storage/KnowledgeStore.swift` | Swap JSON I/O for SQLite | 3 |
+| `mnemos-mcp/Sources/main.swift` | New: MCP stdio server | 3 |
+| `docker-compose.yml` | New: team server (Podman-compatible) | 4 |
 
 ---
 
