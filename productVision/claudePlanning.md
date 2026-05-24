@@ -15,6 +15,7 @@ This plan defines the phases, technology decisions, and epics required to reach 
 - **Privacy by default** — all automatic capture is opt-in; snippets are private unless explicitly shared
 - **Monolithic-first** — no microservices split until a boundary forces it
 - **macOS native stays** — overlay remains Swift/SwiftUI; new components (MCP server, VS Code extension, sync server) are separate binaries/packages
+- **Beta-first SDLC** — ship the smallest working thing to real users before building infrastructure; validate before scaling
 
 ---
 
@@ -23,161 +24,88 @@ This plan defines the phases, technology decisions, and epics required to reach 
 | Layer | State | Format |
 |---|---|---|
 | Capture UI | ✅ Shipped | Manual text + tags |
-| Browse UI | 🔄 In Progress (Epic #4) | Day-grouped list, tag filter |
+| Browse UI | ✅ Shipped | Day-grouped list, tag filter, search |
 | Storage | ✅ Shipped | Flat JSON, 7-day rolling |
+| Skills Compiler | 🔄 In Progress (Epic #5) | group snippets by tag → skills.json |
 | AI integration | ❌ None | — |
 | Auto-capture | ❌ None | — |
 | Team sync | ❌ None | — |
 
 ---
 
+## Revised Roadmap — Beta-First Staging
+
+The original roadmap optimised for technical correctness (SQLite before AI, infrastructure before users). The revised staging optimises for **getting real developers using a real brain as fast as possible**, then hardening the infrastructure once value is proven.
+
+```
+ORIGINAL ORDER          REVISED ORDER
+─────────────────       ──────────────────────────────────────
+Phase 1: MVP       →    Stage 1: Complete MVP + Skills Compiler  ← NOW
+Phase 2: SQLite    →    Stage 4: SQLite + MCP (deferred)
+Phase 3: MCP       →    Stage 4: (same, deferred)
+Phase 4: Auto-cap  →    Stage 2: VS Code Auto-capture (moved up)
+Phase 5: Team      →    Stage 3: Shared Brain via Git (simplified)
+                        Stage 4: SQLite + Full MCP (after beta proven)
+                        Stage 5: Team PostgreSQL (scale-up)
+```
+
+**Why this order:** Auto-capture and a shared brain are the features that make the product *feel* like magic to a beta team. SQLite and a full MCP server are infrastructure investments that pay off at scale — they come after beta validates the value, not before.
+
+---
+
 ## Architecture Evolution
 
 ```
-TODAY
+TODAY (Stage 1)
   [macOS Overlay] ──► [KnowledgeStore] ──► [~/Mnemos/YYYY-MM-DD.json]
+                                                        │
+                                           [SkillsCompiler] ──► [skills.json]
 
-PHASE 2
+STAGE 2 (Auto-capture)
+  [VS Code Ext]   ──► POST localhost:40842/capture ──► [CaptureEndpoint (Swift)]
+                                                              │
+  [macOS Overlay] ──────────────────────────────────► [KnowledgeStore] ──► [JSON]
+                                                              │
+                                                   [SkillsCompiler] ──► [skills.json]
+
+STAGE 3 (Shared Brain via Git)
+  each dev: [skills.json] ──► push to shared repo ──► CI merge ──► [team-brain.json]
+  Claude Code: @file team-brain.json  ←── load ─────────────────────────────────────
+
+STAGE 4 (Infrastructure hardening)
   [macOS Overlay] ──► [KnowledgeStore] ──► [SQLite local DB]
                                             (FTS5 + vector via sqlite-vec)
-
-PHASE 3 (AI)
-  [macOS Overlay] ──► [KnowledgeStore] ──► [SQLite]
   [Claude Code]   ──► [mnemos-mcp]     ──► [SQLite]  (MCP stdio server)
   [Claude API]    ──►  in-app query UI  ──► [SQLite]
 
-PHASE 4 (Auto-capture)
-  [VS Code Ext]   ──► [Mnemos daemon (HTTP)]  ──► [SQLite]
-  [macOS Overlay] ──► [Session mode + notifications]
-
-PHASE 5 (Team)
+STAGE 5 (Team scale-up)
   [each dev SQLite] ──► [mnemos-sync] ──► [PostgreSQL + pgvector]
-                                          (Docker Compose, on-prem or cloud)
   [Team query UI] ──► [mnemos-sql / NL query] ──► [PostgreSQL]
-  [mnemos-mcp]    ──► [local + team brain]
 ```
 
 ---
 
-## Phase 1 — Complete Current MVP
-**Goal:** Finish Epic #4 (browse), close remaining open issues. No new features.
+## Stage 1 — Complete MVP + Skills Compiler
+**Goal:** Finish Epic #5 (Skills Compiler). No new features.
 
-**Issues to close:**
-- #35 Search bar (filter by content substring)
-- #36 Empty state for browse view
-- #37 Tests for browse & review
-- #29 TextEditor focus bug fix
-- #30 DEVELOPMENT_TEAM in project.yml
+**Issues:**
+- #46 SkillsCompiler core transform: group snippets by tag, emit skills.json (Ready)
+- #47 Tests: SkillsCompiler grouping, untagged → general, JSON schema (Ready)
+- #48 Auto-compile skills.json with 5s debounce after each save (Backlog)
+- #49 Menu bar: add 'Export Skills' action to trigger manual recompile (Backlog)
+- #30 Chore: set DEVELOPMENT_TEAM in project.yml (Ready)
 
-**Output:** A polished, fully-tested single-user overlay with manual capture, tag-filtered browse, and content search.
-
----
-
-## Phase 2 — Storage Foundation (Local DB)
-**Goal:** Replace flat JSON files with SQLite. Add FTS and vector storage. No UX change.
-
-### Why SQLite first
-- Zero friction — embedded in the Swift app, no Docker, no daemon
-- FTS5 extension enables full-text search (needed for Phase 3 query)
-- `sqlite-vec` extension adds vector column for embeddings (semantic search)
-- Data migration is a one-time import on first launch
-- Team layer (Phase 5) will use PostgreSQL — same SQL dialect, easy port
-
-### Schema
-```sql
-CREATE TABLE snippets (
-  id          TEXT PRIMARY KEY,          -- UUID string
-  content     TEXT NOT NULL,
-  tags        TEXT NOT NULL,             -- JSON array ["swift","ios"]
-  source      TEXT NOT NULL DEFAULT 'manual',  -- 'manual' | 'vscode' | 'terminal' | 'clipboard' | 'screen'
-  captured_at INTEGER NOT NULL,          -- Unix timestamp
-  expires_at  INTEGER NOT NULL,
-  metadata    TEXT                       -- JSON blob for source-specific extras
-);
-
-CREATE VIRTUAL TABLE snippets_fts USING fts5(content, tags, content='snippets', content_rowid='rowid');
-
--- Added when sqlite-vec is available:
-CREATE VIRTUAL TABLE snippet_embeddings USING vec0(
-  snippet_id TEXT PRIMARY KEY,
-  embedding  FLOAT[1536]                -- Claude embed-v1 dim
-);
-```
-
-### Retention
-- **Local brain**: 7 days (same as today, purged on launch)
-- **Team brain** (Phase 5): configurable (default 7d, admin can extend to 30d / 90d / indefinite)
-
-### New/changed files
-- `Mnemos/Storage/KnowledgeDatabase.swift` — SQLite wrapper (using `SQLite.swift` or raw `libsqlite3`)
-- `Mnemos/Storage/KnowledgeStore.swift` — swap file I/O for DB calls, keep same public API (`save(_:)`, `fetchAll()`, `fetchToday()`, `purgeExpired()`)
-- `Mnemos/Models/KnowledgeSnippet.swift` — add `source: SnippetSource` field (enum, default `.manual`)
-- `Mnemos/Models/SnippetSource.swift` — new enum: `manual | vscode | terminal | clipboard | screen`
-- `MnemosTests/KnowledgeDatabaseTests.swift` — SQL round-trip, FTS, migration
-- `project.yml` — add sqlite-vec SPM package
-
-### Migration
-On first launch after upgrade: load all existing JSON files → insert into SQLite → rename JSON files to `.migrated` → purge on second launch.
+**Output:** Each developer has a `skills.json` compiled from their local brain, grouped by tag, readable by Claude Code as a `@file` context reference.
 
 ---
 
-## Phase 3 — AI Integration (MCP + Claude API)
-**Goal:** Let Claude Code query the local brain via MCP. Let in-app users query with natural language using their own Claude API key.
+## Stage 2 — VS Code Auto-capture
+**Goal:** Build a minimal VS Code extension + local Swift HTTP receiver so the brain fills itself automatically as developers work — no manual overlay interaction required.
 
-### 3A — mnemos-mcp (MCP stdio server)
-A standalone Swift or Go binary that implements the MCP protocol over stdio. Claude Code adds it to `~/.claude/settings.json` as an MCP server.
+**Why before SQLite:** Auto-capture is the key unlock — the brain goes from "thing you remember to fill" to "thing that fills itself." Proving this on the existing JSON store is faster and lower risk than migrating storage first.
 
-**Exposed tools:**
-```
-search_brain(query: string, limit?: number) → snippet[]
-  -- FTS + optional semantic reranking
-
-get_snippets_for_file(file_path: string) → snippet[]
-  -- Returns snippets where metadata.file_path matches
-
-add_snippet(content: string, tags: string[]) → snippet
-  -- Capture from Claude Code without opening overlay
-
-list_tags(prefix?: string) → string[]
-  -- All tags in local brain
-
-query_team(query: string, member_id?: string) → snippet[]
-  -- Phase 5: fan out to team PostgreSQL
-```
-
-**Binary location:** `~/.mnemos/mnemos-mcp` (installed via `brew install` or app bundle)
-
-**New files:**
-- `mnemos-mcp/` — new Swift Package (CLI target)
-- `mnemos-mcp/Sources/main.swift` — MCP stdio loop
-- `mnemos-mcp/Sources/BrainClient.swift` — reads local SQLite
-- `mnemos-mcp/Sources/Tools/` — one file per tool
-
-### 3B — Claude API key + in-app query
-- API key stored in macOS Keychain (never on disk)
-- New "Ask" mode in overlay (third tab: Capture | Browse | Ask)
-- User types natural language question → app calls Claude Haiku with relevant snippets as context → answer shown inline
-- Relevant snippets fetched via FTS + optional embedding similarity
-
-**New/changed files:**
-- `Mnemos/Overlay/AskView.swift` — new tab
-- `Mnemos/Overlay/AskViewModel.swift` — Anthropic SDK calls
-- `Mnemos/Services/ClaudeService.swift` — API key read from Keychain, request builder
-- `Mnemos/Services/KeychainService.swift` — read/write API key
-- `Mnemos/Overlay/OverlayViewModel.swift` — add `.ask` mode
-
----
-
-## Phase 4 — Automatic Capture
-**Goal:** Add a Manual / Auto toggle. In Auto mode, a VS Code extension feeds events to a local Mnemos daemon. Session mode with timer and notifications.
-
-### UX: Manual / Auto toggle
-- Toggle in MenuBarView (or overlay header)
-- **Manual**: current behaviour — user explicitly opens overlay and types
-- **Auto**: Mnemos daemon runs, VS Code extension sends events, smart filtering stores relevant snippets, notifications keep user informed
-
-### 4A — Local Mnemos Daemon
-A lightweight HTTP server (localhost only, port 40842) that accepts capture events from VS Code / terminal hooks.
+### Local HTTP Capture Endpoint (Swift)
+A lightweight HTTP server embedded in the app listening on `localhost:40842`.
 
 ```
 POST /capture
@@ -189,62 +117,161 @@ POST /capture
 }
 ```
 
-Daemon started automatically when Auto mode is toggled on. Runs as a background NSApplication service or launchd agent.
+- Only accepts localhost connections (security gate)
+- Writes to existing `KnowledgeStore.save(_:)`
+- Starts when app launches, stops cleanly on quit
 
 **New files:**
-- `MnemosDaemon/` — new Swift Package
-- `MnemosDaemon/Sources/CaptureServer.swift` — lightweight HTTP server (NIO or URLSession-based)
-- `MnemosDaemon/Sources/FilterEngine.swift` — deduplication + relevance scoring
+- `Mnemos/Capture/CaptureServer.swift` — HTTP listener
+- `Mnemos/Capture/CaptureRequestHandler.swift` — decode + validate + save
 
-### 4B — VS Code Extension (MVP auto-capture)
-TypeScript extension in `extensions/vscode/`.
+### VS Code Extension (TypeScript)
+**File open/save events (default on):**
+- File open → POST `{ source: 'vscode', content: 'Opened <filename>', tags: [<language>], metadata: { file_path, project } }`
+- File save → POST `{ source: 'vscode', content: 'Saved <filename>', tags: [<language>], metadata: { file_path, project } }`
+- Filters out node_modules, .git, system paths
 
-**Captures (with user consent, toggled per type):**
-- File open/save: `"Opened AuthService.swift — modified 3 functions"`
-- Terminal commands in VS Code integrated terminal (significant commands only)
-- Errors in Problems panel: `"Error in AuthService.swift: cannot find type 'Token'"`
-- Git operations: `"Committed feat(auth): add token refresh — 3 files changed"`
-
-**Sends:** POST to `localhost:40842/capture`
-**Settings:** VS Code settings JSON for toggle, filter rules, tag prefix
+**Terminal command capture (default off, opt-in):**
+- VS Code setting: `mnemos.captureTerminal` (boolean, default false)
+- Captures: git commit/push/merge, npm/yarn/pnpm run scripts, non-zero exit commands
+- Filters noise: ls, cd, cat, clear, commands under 10 chars
 
 **Key files:**
-- `extensions/vscode/src/extension.ts` — activation, event listeners
-- `extensions/vscode/src/captureClient.ts` — HTTP client to daemon
-- `extensions/vscode/src/filterEngine.ts` — what's worth capturing
-- `extensions/vscode/package.json` — VS Code extension manifest
+- `extensions/vscode/src/extension.ts`
+- `extensions/vscode/src/captureClient.ts`
+- `extensions/vscode/src/filterEngine.ts`
+- `extensions/vscode/package.json`
 
-### 4C — Session Mode + Notifications
-- Session: user sets timer (default 25min, Pomodoro-style)
-- macOS `UserNotifications` framework shows periodic "Mnemos is tracking: 3 snippets captured"
-- End-of-session summary notification with count + top tags captured
-- "What's being tracked" live feed panel in overlay
+### Tests
+- Swift: endpoint accepts valid POST → snippet in KnowledgeStore; rejects non-localhost; 400 on bad JSON
+- VS Code: file open payload shape; node_modules filtered; terminal gate; noise filter; graceful no-op when daemon offline
 
-**New/changed files:**
-- `Mnemos/Session/SessionManager.swift` — timer, state (idle | recording | paused)
-- `Mnemos/Session/SessionViewModel.swift` — UI binding
-- `Mnemos/Overlay/SessionView.swift` — session panel
-- `Mnemos/Services/NotificationService.swift` — UserNotifications wrapper
+**Issues:**
+- #53 feat: local HTTP capture endpoint in Swift (Ready)
+- #54 feat: VS Code extension — file open/save capture (Backlog)
+- #55 feat: VS Code extension — terminal command capture, opt-in (Backlog)
+- #56 test: capture endpoint + VS Code extension event filtering (Backlog)
 
-### Future auto-capture sources (post-MVP)
-- Terminal shell hooks (zsh/fish): separate install step, same daemon pattern
-- JetBrains plugin: same architecture as VS Code extension
-- Clipboard monitor: `NSPasteboard` polling, user-toggled
-- Screen OCR: `Vision` framework, periodic screenshot, high privacy gate
+**Output:** Developer installs VS Code extension → opens a file → snippet appears in Browse within 5s. Zero manual input.
 
 ---
 
-## Phase 5 — Team Brain (Multi-User + Team Sync)
-**Goal:** Each developer's local SQLite syncs shared snippets to a team PostgreSQL. Team members can query each other's brains.
+## Stage 3 — Shared Brain via Git
+**Goal:** Each developer's `skills.json` gets committed to a shared internal repo. A CI job merges them into `team-brain.json`. Any team member or Claude Code instance loads it as context — no server, no Docker, no account required.
 
-### Team identity model
+**Why before PostgreSQL:** For a 5–10 person beta team, a compiled JSON file in a shared repo is enough to prove value. Ships in days, not weeks.
+
+### Merge-Skills Script
+Reads all `skills/<developer>.json` files → deduplicates identical content (case-insensitive) → emits `team-brain.json` attributed by author.
+
+**Input** (`skills/alice.json`):
+```json
+{
+  "swift": ["Use @MainActor for UI updates"],
+  "auth": ["Tokens expire after 5 minutes"]
+}
+```
+
+**Output** (`team-brain.json`):
+```json
+{
+  "swift": [
+    { "author": "alice", "content": "Use @MainActor for UI updates" },
+    { "author": "bob",   "content": "Prefer structured concurrency over GCD" }
+  ],
+  "auth": [
+    { "author": "alice", "content": "Tokens expire after 5 minutes" }
+  ]
+}
+```
+
+**New files:**
+- `scripts/merge-skills.js` — merge script (Node.js)
+- `.github/workflows/compile-team-brain.yml` — triggers on push to skills/
+
+### CI Job
+Triggers when any `skills/*.json` changes on push to main → runs merge script → auto-commits updated `team-brain.json`. Idempotent, completes in under 30s.
+
+### Developer Onboarding
+- Install Mnemos + VS Code extension
+- Clone shared brain repo
+- After each session: push updated `skills.json` to `skills/<your-name>.json`
+- Load `team-brain.json` in Claude Code via `@file`
+
+**Issues:**
+- #57 feat: merge-skills script (Backlog)
+- #58 ci: auto-compile team-brain.json on push (Backlog)
+- #59 docs: team onboarding guide (Backlog)
+
+**Output:** Dev A pushes skills.json → CI merges → Dev B pulls → Claude Code answers questions about the team's collective knowledge.
+
+---
+
+## Stage 4 — Storage Foundation + Full MCP
+**Goal:** Migrate from flat JSON to SQLite. Build the mnemos-mcp stdio server. Enable real-time queries. Unlocks after beta validates value from Stages 1–3.
+
+### Why SQLite
+- FTS5 enables full-text search across all snippets
+- `sqlite-vec` adds vector column for semantic search
+- Embedded — no server, no Docker
+- Same SQL dialect as PostgreSQL (easy port for Stage 5)
+- Enables real-time MCP queries (not possible with static skills.json)
+
+### Schema
 ```sql
--- Team PostgreSQL schema
+CREATE TABLE snippets (
+  id          TEXT PRIMARY KEY,
+  content     TEXT NOT NULL,
+  tags        TEXT NOT NULL,             -- JSON array
+  source      TEXT NOT NULL DEFAULT 'manual',
+  captured_at INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL,
+  metadata    TEXT                       -- JSON blob
+);
+
+CREATE VIRTUAL TABLE snippets_fts USING fts5(content, tags, content='snippets', content_rowid='rowid');
+
+CREATE VIRTUAL TABLE snippet_embeddings USING vec0(
+  snippet_id TEXT PRIMARY KEY,
+  embedding  FLOAT[1536]
+);
+```
+
+### Migration
+On first launch after upgrade: load all JSON files → insert into SQLite → rename `.json` → `.migrated`.
+
+### mnemos-mcp (MCP stdio server)
+Standalone binary. Claude Code adds it to `~/.claude/settings.json`.
+
+**Exposed tools:**
+```
+search_brain(query, limit?)     → snippet[]   -- FTS + semantic reranking
+get_snippets_for_file(path)     → snippet[]   -- by metadata.file_path
+add_snippet(content, tags)      → snippet     -- capture from Claude Code
+list_tags(prefix?)              → string[]    -- all tags in local brain
+```
+
+**New files:**
+- `Mnemos/Storage/KnowledgeDatabase.swift` — SQLite wrapper
+- `Mnemos/Storage/KnowledgeStore.swift` — swap file I/O for DB calls, keep same public API
+- `Mnemos/Models/KnowledgeSnippet.swift` — add `source: SnippetSource` field
+- `mnemos-mcp/` — new Swift Package (CLI target)
+- `MnemosTests/KnowledgeDatabaseTests.swift`
+
+**Issues (to create after Stage 3 complete):**
+- Epic #7: Storage: SQLite migration + FTS
+- Epic #8: AI: mnemos-mcp stdio server
+- Epic #9: AI: Claude API key + Ask tab
+
+---
+
+## Stage 5 — Team Brain (Scale-Up)
+**Goal:** Replace the git-based shared brain with a real-time PostgreSQL sync. Enables live queries, semantic search across the team, and the mnemos-sql query language. Unlocks after Stage 4 proven.
+
+### Team PostgreSQL Schema
+```sql
 CREATE TABLE members (
-  id          UUID PRIMARY KEY,
-  name        TEXT,
-  email       TEXT UNIQUE,
-  team_id     UUID NOT NULL
+  id UUID PRIMARY KEY, name TEXT, email TEXT UNIQUE, team_id UUID NOT NULL
 );
 
 CREATE TABLE snippets (
@@ -254,9 +281,9 @@ CREATE TABLE snippets (
   tags        JSONB NOT NULL,
   source      TEXT NOT NULL,
   captured_at TIMESTAMPTZ NOT NULL,
-  expires_at  TIMESTAMPTZ,            -- NULL = indefinite
-  is_shared   BOOLEAN DEFAULT FALSE,  -- privacy gate
-  embedding   VECTOR(1536),           -- pgvector
+  expires_at  TIMESTAMPTZ,
+  is_shared   BOOLEAN DEFAULT FALSE,
+  embedding   VECTOR(1536),
   metadata    JSONB
 );
 
@@ -264,88 +291,81 @@ CREATE INDEX ON snippets USING ivfflat (embedding vector_cosine_ops);
 CREATE INDEX ON snippets USING GIN (tags);
 ```
 
-### Sync protocol
+### Sync Protocol
 - **Push**: local daemon POSTs new shared snippets to team server on save
 - **Pull**: periodic background sync (configurable interval)
-- **Conflict**: last-write-wins per snippet ID (no CRDTs needed at this scale)
+- **Conflict**: last-write-wins per snippet ID
 - **Privacy**: only `is_shared = TRUE` snippets leave the device
 
-### Team server
-- Single Go binary (`mnemos-server`)
-- REST API: `POST /snippets`, `GET /snippets/search`, `GET /members`
-- `docker-compose.yml`: mnemos-server + PostgreSQL + pgvector
-- Spun up with `docker compose up -d` — zero config for standard use
-
-**New subdirectory:** `server/` (Go module)
-- `server/cmd/mnemos-server/main.go`
-- `server/internal/api/` — REST handlers
-- `server/internal/store/` — PostgreSQL queries (pgx)
-- `server/internal/sync/` — push/pull logic
-- `docker-compose.yml` — at repo root
-
-### mnemos-sql query language
-Thin SQL dialect over team PostgreSQL:
+### mnemos-sql Query Language
 ```sql
 FROM @alice SEARCH "authentication token refresh"
-FROM @team TAGGED "swift" SINCE 7d
-FROM @team WHERE content CONTAINS "race condition" LIMIT 10
-FROM @me RECENT 20
+FROM @team  TAGGED "swift" SINCE 7d
+FROM @me    RECENT 20
 ```
 
-Translates to: `SELECT * FROM snippets JOIN members ON ... WHERE ...`
-
-Parser: simple PEG grammar (`FROM @<member|team|me> <verb> ...`). Initial implementation is a regex-based preprocessor that emits real SQL.
-
-### Retention (team)
-- Default: 7 days (matches local)
-- Admin-configurable: 30d / 90d / indefinite
-- Set via `docker-compose.yml` env var `MNEMOS_RETENTION_DAYS=90` or API
+**Issues (to create after Stage 4 complete):**
+- Epic #12: Team sync server + Docker Compose
+- Epic #13: mnemos-sql query layer
+- Epic #14: Auto-capture terminal, JetBrains, clipboard, screen
 
 ---
 
-## Epics to Create (post-MVP)
+## Epics Map
 
-| Epic | Title | Unlock After |
+| Epic | Title | Stage | Status |
+|---|---|---|---|
+| #1 | Overlay Shell | 1 | ✅ Done |
+| #2 | Knowledge Capture | 1 | ✅ Done |
+| #3 | Ephemeral Storage | 1 | ✅ Done |
+| #4 | Browse & Review | 1 | ✅ Done |
+| #5 | Skills Compiler | 1 | 🔄 In Progress |
+| #6 | App Polish & Distribution | 1 | 🔄 In Progress |
+| #51 | VS Code Auto-capture | 2 | 📋 Planned |
+| #52 | Shared Brain via Git | 3 | 📋 Planned |
+| #7 | Storage: SQLite + FTS | 4 | 🔒 Locked (after Stage 3) |
+| #8 | AI: mnemos-mcp stdio server | 4 | 🔒 Locked |
+| #9 | AI: Claude API key + Ask tab | 4 | 🔒 Locked |
+| #12 | Team sync + Docker Compose | 5 | 🔒 Locked (after Stage 4) |
+| #13 | Team: mnemos-sql | 5 | 🔒 Locked |
+| #14 | Auto-capture: terminal/JB/clipboard/screen | 5 | 🔒 Locked |
+
+---
+
+## Critical Files (Across All Stages)
+
+| File | Change | Stage |
 |---|---|---|
-| #7 | Storage: SQLite migration + FTS | Phase 1 complete |
-| #8 | AI: mnemos-mcp stdio server | Phase 2 complete |
-| #9 | AI: Claude API key + Ask tab | Phase 2 complete |
-| #10 | Auto-capture: Mnemos daemon + VS Code extension MVP | Phase 3 complete |
-| #11 | Auto-capture: Session mode + notifications | Epic #10 |
-| #12 | Team: sync server + Docker Compose | Phase 4 complete |
-| #13 | Team: mnemos-sql query layer | Epic #12 |
-| #14 | Auto-capture: terminal, JetBrains, clipboard, screen | Epic #12 |
-
----
-
-## Critical Files (Current → Modified)
-
-| File | Change |
-|---|---|
-| `Mnemos/Storage/KnowledgeStore.swift` | Swap JSON I/O for SQLite via KnowledgeDatabase |
-| `Mnemos/Models/KnowledgeSnippet.swift` | Add `source: SnippetSource` field |
-| `Mnemos/Overlay/OverlayView.swift` | Add Ask tab (Phase 3) |
-| `Mnemos/Overlay/OverlayViewModel.swift` | Add `.ask` mode (Phase 3) |
-| `Mnemos/App/MenuBarView.swift` | Add Manual/Auto toggle (Phase 4) |
-| `project.yml` | Add SQLite SPM dep (Phase 2), daemon target (Phase 4) |
-| `docker-compose.yml` | New file — team server (Phase 5) |
+| `Mnemos/SkillsCompiler/SkillsCompiler.swift` | New: group by tag, emit skills.json | 1 |
+| `Mnemos/Capture/CaptureServer.swift` | New: localhost HTTP receiver | 2 |
+| `extensions/vscode/src/extension.ts` | New: VS Code extension | 2 |
+| `scripts/merge-skills.js` | New: merge per-dev skills.json | 3 |
+| `.github/workflows/compile-team-brain.yml` | New: CI auto-compile | 3 |
+| `Mnemos/Storage/KnowledgeStore.swift` | Swap JSON I/O for SQLite | 4 |
+| `Mnemos/Models/KnowledgeSnippet.swift` | Add `source: SnippetSource` | 4 |
+| `mnemos-mcp/Sources/main.swift` | New: MCP stdio server | 4 |
+| `docker-compose.yml` | New: team server | 5 |
 
 ---
 
 ## Verification
 
-### Phase 2
+### Stage 1 (Skills Compiler)
+- `xcodebuild test` — all tests pass
+- Manual: capture 3 snippets with different tags → skills.json groups them correctly → `@file skills.json` in Claude Code returns tag-organised knowledge
+
+### Stage 2 (Auto-capture)
+- Toggle VS Code extension on → open a file → overlay Browse shows new snippet within 5s, no manual input
+- Terminal capture off by default → enable setting → run `git commit` → snippet appears
+
+### Stage 3 (Shared Brain)
+- Dev A pushes skills.json → CI merge runs → Dev B pulls → Claude Code loads team-brain.json → answers question drawing on Dev A's knowledge
+
+### Stage 4 (SQLite + MCP)
 - `xcodebuild test` — all existing tests pass against SQLite backend
-- Manual: capture snippet → quit app → relaunch → snippet visible in browse
+- Manual: capture → quit → relaunch → snippet visible (persistence across launch)
+- `claude "what Swift concurrency snippets do I have?"` → returns results via MCP
 
-### Phase 3 (MCP)
-- Add mnemos-mcp to Claude Code settings → `claude "what Swift concurrency snippets do I have?"` returns results
-- API key stored: verify no file on disk, verify Keychain entry exists
-
-### Phase 4 (Auto-capture)
-- Toggle Auto → open a file in VS Code → overlay shows new snippet within 5s
-- Session timer counts down → macOS notification fires at end
-
-### Phase 5 (Team)
+### Stage 5 (Team scale-up)
 - `docker compose up -d` on second machine → snippet from machine A appears in machine B browse within sync interval
 - `FROM @alice SEARCH "auth"` returns Alice's shared snippets
