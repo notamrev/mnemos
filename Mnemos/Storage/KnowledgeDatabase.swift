@@ -1,9 +1,19 @@
 import Foundation
 import SQLite3
 
+@MainActor
 final class KnowledgeDatabase {
-    private var db: OpaquePointer?
+    // nonisolated(unsafe): deinit can't access @MainActor storage; sqlite3_close is safe
+    // at deallocation time since no other references can exist.
+    nonisolated(unsafe) private var db: OpaquePointer?
     private let url: URL
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
 
     init(url: URL) throws {
         self.url = url
@@ -58,12 +68,21 @@ final class KnowledgeDatabase {
             """
         let snippets = query(sql, bindings: [])
         var groups: [String: [KnowledgeSnippet]] = [:]
-        let formatter = iso8601DateFormatter()
         for snippet in snippets {
-            let key = formatter.string(from: snippet.capturedAt)
+            let key = Self.dateFormatter.string(from: snippet.capturedAt)
             groups[key, default: []].append(snippet)
         }
         return groups.keys.sorted().map { DailyLog(date: $0, items: groups[$0]!) }
+    }
+
+    func fetchByTag(_ tag: String) -> [KnowledgeSnippet] {
+        // json_each lets us match exact tag values inside the stored JSON array.
+        let sql = """
+            SELECT s.id, s.content, s.tags, s.source, s.captured_at, s.expires_at
+            FROM snippets s, json_each(s.tags) je
+            WHERE je.value = ?;
+            """
+        return query(sql, bindings: [tag])
     }
 
     func purgeExpired(before date: Date) {
@@ -73,6 +92,10 @@ final class KnowledgeDatabase {
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_int64(stmt, 1, Int64(date.timeIntervalSince1970))
         sqlite3_step(stmt)
+    }
+
+    func deleteAll() {
+        sqlite3_exec(db, "DELETE FROM snippets;", nil, nil, nil)
     }
 
     func search(query queryString: String, limit: Int = 20) -> [KnowledgeSnippet] {
@@ -93,7 +116,7 @@ final class KnowledgeDatabase {
     }
 
     func allTags() -> [String] {
-        let sql = "SELECT DISTINCT tags FROM snippets;"
+        let sql = "SELECT tags FROM snippets;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
@@ -181,13 +204,6 @@ final class KnowledgeDatabase {
 
     private var lastError: String {
         db.map { String(cString: sqlite3_errmsg($0)) } ?? "no db"
-    }
-
-    private func iso8601DateFormatter() -> DateFormatter {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
     }
 }
 

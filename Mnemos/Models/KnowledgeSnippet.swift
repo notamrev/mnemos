@@ -22,7 +22,7 @@ struct KnowledgeSnippet: Codable, Identifiable, Equatable {
         self.expiresAt = capturedAt.addingTimeInterval(7 * 24 * 60 * 60)
     }
 
-    // Used when reconstructing from the database (all fields known).
+    // Separate init prevents UUID regeneration when reconstructing rows from the DB.
     init(id: UUID, content: String, tags: [String], source: SnippetSource, capturedAt: Date, expiresAt: Date) {
         self.id = id
         self.content = content
