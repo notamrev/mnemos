@@ -8,6 +8,8 @@ final class KnowledgeStore {
 
     let directory: URL
     var onSave: (() -> Void)?
+
+    private let db: KnowledgeDatabase
     private let formatter: DateFormatter
 
     init(directory: URL = FileManager.default
@@ -19,79 +21,51 @@ final class KnowledgeStore {
         f.locale = Locale(identifier: "en_US_POSIX")
         self.formatter = f
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        sweepTempFiles()
+        // DB lives alongside the directory rather than inside it so the directory
+        // remains a clean JSON/migrated-only space (required by existing tests).
+        self.db = (try? KnowledgeDatabase(url: directory.appendingPathExtension("db")))!
     }
 
     func save(_ snippet: KnowledgeSnippet) throws {
-        let key = dateKey(for: snippet.capturedAt)
-        let url = directory.appending(path: "\(key).json")
-        let log: DailyLog
-        if let existing = loadLog(at: url) {
-            log = DailyLog(date: key, items: existing.items + [snippet])
-        } else {
-            log = DailyLog(date: key, items: [snippet])
-        }
-        try atomicWrite(log, to: url)
+        try db.insert(snippet)
         onSave?()
     }
 
     func fetchToday() -> DailyLog? {
-        loadLog(at: directory.appending(path: "\(dateKey(for: .now)).json"))
+        migratePendingJSONFiles()
+        let items = db.fetchByDateKey(dateKey(for: .now))
+        guard !items.isEmpty else { return nil }
+        return DailyLog(date: dateKey(for: .now), items: items)
     }
 
     func fetchAll() -> [DailyLog] {
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil
-        ) else { return [] }
-        return entries
-            .filter { $0.pathExtension == "json" }
-            .compactMap { loadLog(at: $0) }
-            .sorted { $0.date < $1.date }
+        migratePendingJSONFiles()
+        return db.fetchAllGroupedByDate()
     }
 
     func purgeExpired(relativeTo now: Date = .now) {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
-        let cutoffKey = dateKey(for: cutoff)
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil
-        ) else { return }
-        for url in entries where url.pathExtension == "json" {
-            let stem = url.deletingPathExtension().lastPathComponent
-            if stem < cutoffKey {
-                try? FileManager.default.removeItem(at: url)
-            } else if let log = loadLog(at: url) {
-                let kept = log.items.filter { $0.expiresAt > now }
-                if kept.count != log.items.count {
-                    try? atomicWrite(DailyLog(date: log.date, items: kept), to: url)
-                }
-            }
-        }
-    }
-
-    // MARK: - Private
-
-    private func loadLog(at url: URL) -> DailyLog? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(DailyLog.self, from: data)
-    }
-
-    private func atomicWrite(_ log: DailyLog, to url: URL) throws {
-        let data = try JSONEncoder().encode(log)
-        let tmp = directory.appending(path: UUID().uuidString + ".tmp")
-        try data.write(to: tmp)
-        _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+        migratePendingJSONFiles()
+        // expiresAt is already capturedAt + 7 days, so purging where expiresAt < now
+        // removes both truly-expired snippets and all snippets older than 7 days.
+        db.purgeExpired(before: now)
     }
 
     func dateKey(for date: Date) -> String {
         formatter.string(from: date)
     }
 
-    private func sweepTempFiles() {
+    // MARK: - Private
+
+    private func migratePendingJSONFiles() {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil
         ) else { return }
-        for url in entries where url.pathExtension == "tmp" {
-            try? FileManager.default.removeItem(at: url)
+        for url in entries where url.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: url),
+                  let log = try? JSONDecoder().decode(DailyLog.self, from: data) else { continue }
+            for snippet in log.items { try? db.insert(snippet) }
+            let migrated = url.deletingPathExtension().appendingPathExtension("migrated")
+            try? FileManager.default.moveItem(at: url, to: migrated)
         }
     }
 }
