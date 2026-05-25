@@ -14,12 +14,14 @@ struct KnowledgeSnippet: Codable, Identifiable, Equatable {
     let expiresAt: Date
 
     init(content: String, tags: [String], capturedAt: Date = .now, source: SnippetSource = .manual) {
+        // Truncate to whole seconds so round-trips through integer-second storage are lossless.
+        let ts = Date(timeIntervalSince1970: capturedAt.timeIntervalSince1970.rounded(.down))
         self.id = UUID()
         self.content = content
         self.tags = tags
         self.source = source
-        self.capturedAt = capturedAt
-        self.expiresAt = capturedAt.addingTimeInterval(7 * 24 * 60 * 60)
+        self.capturedAt = ts
+        self.expiresAt = ts.addingTimeInterval(7 * 24 * 60 * 60)
     }
 
     // Separate init prevents UUID regeneration when reconstructing rows from the DB.
