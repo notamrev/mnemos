@@ -1,17 +1,45 @@
 import Foundation
 
+enum SnippetSource: String, Codable {
+    case manual
+    case vscode
+}
+
 struct KnowledgeSnippet: Codable, Identifiable, Equatable {
     let id: UUID
     let content: String
     let tags: [String]
+    let source: SnippetSource
     let capturedAt: Date
     let expiresAt: Date
 
-    init(content: String, tags: [String], capturedAt: Date = .now) {
+    init(content: String, tags: [String], capturedAt: Date = .now, source: SnippetSource = .manual) {
         self.id = UUID()
         self.content = content
         self.tags = tags
+        self.source = source
         self.capturedAt = capturedAt
         self.expiresAt = capturedAt.addingTimeInterval(7 * 24 * 60 * 60)
+    }
+
+    // Used when reconstructing from the database (all fields known).
+    init(id: UUID, content: String, tags: [String], source: SnippetSource, capturedAt: Date, expiresAt: Date) {
+        self.id = id
+        self.content = content
+        self.tags = tags
+        self.source = source
+        self.capturedAt = capturedAt
+        self.expiresAt = expiresAt
+    }
+
+    // Decodes legacy JSON that may lack the `source` field.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        content = try c.decode(String.self, forKey: .content)
+        tags = try c.decode([String].self, forKey: .tags)
+        source = (try? c.decode(SnippetSource.self, forKey: .source)) ?? .manual
+        capturedAt = try c.decode(Date.self, forKey: .capturedAt)
+        expiresAt = try c.decode(Date.self, forKey: .expiresAt)
     }
 }
